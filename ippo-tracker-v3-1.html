@@ -1,0 +1,1313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0a0c08">
+<title>OPERATOR // NUTRITION LOG</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&family=Barlow+Condensed:ital,wght@0,400;0,600;0,700;0,800;0,900;1,700&family=Teko:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  :root {
+    --bg:        #080a06;
+    --bg2:       #0d0f0b;
+    --bg3:       #121510;
+    --panel:     #0f1209;
+    --border:    #2a3020;
+    --border2:   #1e2418;
+    --green:     #4a7c3f;
+    --green-hi:  #6ab04c;
+    --green-dim: #2d4a25;
+    --amber:     #c8860a;
+    --amber-hi:  #f0a20e;
+    --red:       #8b2020;
+    --red-hi:    #c0392b;
+    --text:      #a8b89a;
+    --text-hi:   #d4e8c8;
+    --text-dim:  #4a5a40;
+    --mono:      'Share Tech Mono', monospace;
+    --head:      'Teko', sans-serif;
+    --body:      'Rajdhani', sans-serif;
+    --cond:      'Barlow Condensed', sans-serif;
+  }
+
+  html, body {
+    background: var(--bg);
+    height: 100%;
+    overflow: hidden;
+    color: var(--text);
+    font-family: var(--body);
+  }
+
+  #root {
+    height: 100vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    background: var(--bg);
+    /* Subtle grain */
+    background-image:
+      url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+  }
+
+  input, select, button { font-family: var(--body); }
+  input[type=number]::-webkit-inner-spin-button,
+  input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
+  ::-webkit-scrollbar { width: 3px; background: var(--bg2); }
+  ::-webkit-scrollbar-thumb { background: var(--green-dim); }
+  select option { background: #0d0f0b; color: #a8b89a; }
+
+  /* Scanline overlay */
+  #root::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.07) 2px,
+      rgba(0,0,0,0.07) 4px
+    );
+    pointer-events: none;
+    z-index: 9000;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes boot {
+    0% { width: 0%; }
+    100% { width: 100%; }
+  }
+
+  .blink { animation: blink 1.2s infinite; }
+  .fade-in { animation: fadeIn 0.25s ease forwards; }
+
+  /* Corner bracket decoration */
+  .bracket {
+    position: absolute;
+    width: 12px; height: 12px;
+  }
+  .bracket.tl { top: 0; left: 0; border-top: 2px solid var(--green); border-left: 2px solid var(--green); }
+  .bracket.tr { top: 0; right: 0; border-top: 2px solid var(--green); border-right: 2px solid var(--green); }
+  .bracket.bl { bottom: 0; left: 0; border-bottom: 2px solid var(--green); border-left: 2px solid var(--green); }
+  .bracket.br { bottom: 0; right: 0; border-bottom: 2px solid var(--green); border-right: 2px solid var(--green); }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useCallback, useRef } = React;
+
+const DEFAULT_GOALS = { calories: 2200, protein: 150, carbs: 250, fat: 70 };
+const MEALS = ["Breakfast", "Lunch", "Dinner", "Snacks"];
+const MEAL_CODE = { Breakfast: "ALPHA", Lunch: "BRAVO", Dinner: "CHARLIE", Snacks: "DELTA" };
+const MEAL_TIME = { Breakfast: "0600-1000", Lunch: "1200-1400", Dinner: "1800-2000", Snacks: "FIELD" };
+
+const SAMPLE_FOODS = [
+  { id: "sf1", name: "Chicken Breast", baseAmount: 100, unit: "g", calories: 165, protein: 31, carbs: 0, fat: 3.6 },
+  { id: "sf2", name: "White Rice", baseAmount: 100, unit: "g", calories: 130, protein: 2.7, carbs: 28, fat: 0.3 },
+  { id: "sf3", name: "Whole Egg", baseAmount: 1, unit: "serving", calories: 70, protein: 6, carbs: 0.6, fat: 5 },
+  { id: "sf4", name: "Oats", baseAmount: 100, unit: "g", calories: 389, protein: 17, carbs: 66, fat: 7 },
+  { id: "sf5", name: "Banana", baseAmount: 1, unit: "serving", calories: 105, protein: 1.3, carbs: 27, fat: 0.4 },
+  { id: "sf6", name: "Salmon Fillet", baseAmount: 100, unit: "g", calories: 208, protein: 20, carbs: 0, fat: 13 },
+];
+
+const LS = {
+  get: (k, fb) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fb; } catch { return fb; } },
+  set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+
+function todayStr() { return new Date().toISOString().slice(0, 10); }
+function timeStr() { return new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" }); }
+function gridRef() { return `OPS-${Math.random().toString(36).slice(2,6).toUpperCase()}`; }
+
+function useLS(key, fallback) {
+  const [state, setState] = useState(() => LS.get(key, fallback));
+  const set = useCallback((val) => {
+    setState(prev => {
+      const next = typeof val === "function" ? val(prev) : val;
+      LS.set(key, next);
+      return next;
+    });
+  }, [key]);
+  return [state, set];
+}
+
+function totalForDay(entries) {
+  return entries.reduce((acc, e) => {
+    acc.calories += e.calories; acc.protein += e.protein;
+    acc.carbs += e.carbs; acc.fat += e.fat;
+    return acc;
+  }, { calories: 0, protein: 0, carbs: 0, fat: 0 });
+}
+
+// ── CLOCK ──
+function Clock() {
+  const [t, setT] = useState(timeStr());
+  useEffect(() => { const i = setInterval(() => setT(timeStr()), 1000); return () => clearInterval(i); }, []);
+  return <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--green-hi)", letterSpacing: "0.08em" }}>{t}</span>;
+}
+
+// ── SPARKLINE ──
+function SparkLine({ data, color = "#4a7c3f", height = 56 }) {
+  const nz = data.filter(Boolean);
+  if (nz.length < 2) return (
+    <div style={{ height, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--mono)", fontSize: 10, color: "var(--text-dim)", letterSpacing: "0.1em", borderTop: "1px solid var(--border)", borderBottom: "1px solid var(--border)" }}>
+      [NO DATA — AWAITING INPUT]
+    </div>
+  );
+  const max = Math.max(...data, 1), min = Math.min(...nz), range = max - min || 1;
+  const pts = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * 100;
+    const y = v === 0 ? 92 : 100 - ((v - min) / range) * 72 - 10;
+    return `${x},${y}`;
+  }).join(" ");
+  return (
+    <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ height, width: "100%", display: "block" }}>
+      <defs>
+        <linearGradient id="sg2" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.3" />
+          <stop offset="100%" stopColor={color} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      {/* Grid lines */}
+      {[25, 50, 75].map(y => (
+        <line key={y} x1="0" y1={y} x2="100" y2={y} stroke="rgba(74,124,63,0.15)" strokeWidth="0.5" vectorEffect="non-scaling-stroke" />
+      ))}
+      <polygon points={`0,100 ${pts} 100,100`} fill="url(#sg2)" />
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="2" strokeLinecap="square" strokeLinejoin="miter" vectorEffect="non-scaling-stroke" />
+      {/* Last point dot */}
+      {nz.length > 0 && (() => {
+        const lv = data[data.length - 1];
+        const ly = lv === 0 ? 92 : 100 - ((lv - min) / range) * 72 - 10;
+        return <rect x="99" y={ly - 2} width="4" height="4" fill={color} vectorEffect="non-scaling-stroke" />;
+      })()}
+    </svg>
+  );
+}
+
+// ── TACTICAL BAR ──
+function TacBar({ label, code, value, goal, color }) {
+  const pct = Math.min((value / (goal || 1)) * 100, 100);
+  const over = value > goal;
+  const c = color === "prot" ? "var(--green-hi)" : color === "carb" ? "var(--amber-hi)" : "var(--text)";
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--text-dim)", letterSpacing: "0.06em" }}>[{code}]</span>
+          <span style={{ fontFamily: "var(--head)", fontSize: 16, color: over ? "var(--red-hi)" : c, letterSpacing: "0.06em" }}>{label}</span>
+        </div>
+        <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: over ? "var(--red-hi)" : "var(--text-hi)" }}>
+          {Math.round(value)}g<span style={{ color: "var(--text-dim)" }}>/{goal}g</span>
+        </span>
+      </div>
+      <div style={{ height: 5, background: "var(--bg3)", border: "1px solid var(--border)", position: "relative", overflow: "hidden" }}>
+        {/* Tick marks */}
+        {[25, 50, 75].map(t => (
+          <div key={t} style={{ position: "absolute", left: `${t}%`, top: 0, width: 1, height: "100%", background: "rgba(74,124,63,0.2)" }} />
+        ))}
+        <div style={{ height: "100%", width: `${pct}%`, background: over ? "var(--red-hi)" : c, transition: "width 0.5s ease", position: "relative" }}>
+          {pct > 10 && <div style={{ position: "absolute", inset: 0, backgroundImage: "repeating-linear-gradient(90deg, transparent, transparent 4px, rgba(0,0,0,0.2) 4px, rgba(0,0,0,0.2) 5px)" }} />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── STATUS BADGE ──
+function StatusBadge({ children, variant = "green" }) {
+  const styles = {
+    green: { background: "rgba(74,124,63,0.15)", border: "1px solid var(--green-dim)", color: "var(--green-hi)" },
+    amber: { background: "rgba(200,134,10,0.15)", border: "1px solid rgba(200,134,10,0.3)", color: "var(--amber-hi)" },
+    red: { background: "rgba(139,32,32,0.2)", border: "1px solid var(--red)", color: "var(--red-hi)" },
+  };
+  return (
+    <span style={{ ...styles[variant], fontFamily: "var(--mono)", fontSize: 10, padding: "2px 7px", letterSpacing: "0.08em", display: "inline-block" }}>
+      {children}
+    </span>
+  );
+}
+
+// ── PANEL ──
+function Panel({ children, style: s = {}, accent = "green" }) {
+  const borderColor = accent === "amber" ? "var(--amber)" : accent === "red" ? "var(--red)" : "var(--green-dim)";
+  return (
+    <div style={{ background: "var(--panel)", border: `1px solid ${borderColor}`, position: "relative", ...s }}>
+      <div className="bracket tl" style={{ borderColor }} />
+      <div className="bracket tr" style={{ borderColor }} />
+      <div className="bracket bl" style={{ borderColor }} />
+      <div className="bracket br" style={{ borderColor }} />
+      {children}
+    </div>
+  );
+}
+
+// ── MODAL ──
+function Modal({ open, onClose, title, subtitle, children }) {
+  useEffect(() => {
+    document.body.style.overflow = open ? "hidden" : "";
+    return () => { document.body.style.overflow = ""; };
+  }, [open]);
+  if (!open) return null;
+  return (
+    <div onClick={e => e.target === e.currentTarget && onClose()}
+      style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(0,0,0,0.92)", display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+      <div style={{ width: "100%", maxWidth: 500, background: "var(--bg2)", borderTop: "2px solid var(--green)", borderLeft: "1px solid var(--border)", borderRight: "1px solid var(--border)", padding: "20px 18px 48px", maxHeight: "92vh", overflowY: "auto" }}>
+        {/* Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18, paddingBottom: 14, borderBottom: "1px solid var(--border)" }}>
+          <div>
+            {subtitle && <div style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--text-dim)", letterSpacing: "0.12em", marginBottom: 4 }}>{subtitle}</div>}
+            <h2 style={{ fontFamily: "var(--head)", fontSize: 26, color: "var(--green-hi)", letterSpacing: "0.1em", lineHeight: 1 }}>{title}</h2>
+          </div>
+          <button onClick={onClose} style={{ background: "transparent", border: "1px solid var(--border)", color: "var(--text-dim)", padding: "6px 10px", cursor: "pointer", fontFamily: "var(--mono)", fontSize: 11 }}>[ ESC ]</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// ── FIELD ──
+function Field({ label, sub, value, onChange, type = "text", placeholder, unit, small }) {
+  return (
+    <div style={{ marginBottom: small ? 10 : 14 }}>
+      {label && (
+        <div style={{ marginBottom: 5 }}>
+          <label style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--text-dim)", letterSpacing: "0.1em" }}>&gt; {label}</label>
+          {sub && <span style={{ fontFamily: "var(--mono)", fontSize: 9, color: "#2a3a20", marginLeft: 8 }}>{sub}</span>}
+        </div>
+      )}
+      <div style={{ position: "relative" }}>
+        <input
+          type={type} value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder={placeholder}
+          inputMode={type === "number" ? "decimal" : undefined}
+          style={{ width: "100%", background: "var(--bg3)", border: "1px solid var(--border)", borderLeft: "3px solid var(--green-dim)", padding: unit ? "11px 44px 11px 12px" : "11px 12px", color: "var(--text-hi)", fontSize: small ? 14 : 15, outline: "none", boxSizing: "border-box", fontFamily: "var(--body)", fontWeight: 600, borderRadius: 0 }}
+        />
+        {unit && <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontSize: 11, color: "var(--text-dim)", fontFamily: "var(--mono)" }}>{unit}</span>}
+      </div>
+    </div>
+  );
+}
+
+function Sel({ label, value, onChange, options }) {
+  return (
+    <div style={{ marginBottom: 14 }}>
+      {label && <label style={{ display: "block", fontFamily: "var(--mono)", fontSize: 10, color: "var(--text-dim)", letterSpacing: "0.1em", marginBottom: 5 }}>&gt; {label}</label>}
+      <div style={{ position: "relative" }}>
+        <select value={value} onChange={e => onChange(e.target.value)}
+          style={{ width: "100%", background: "var(--bg3)", border: "1px solid var(--border)", borderLeft: "3px solid var(--green-dim)", padding: "11px 34px 11px 12px", color: "var(--text-hi)", fontSize: 15, outline: "none", appearance: "none", WebkitAppearance: "none", fontFamily: "var(--body)", fontWeight: 600, borderRadius: 0 }}>
+          {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+        <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", color: "var(--green-dim)", pointerEvents: "none", fontFamily: "var(--mono)", fontSize: 12 }}>▾</span>
+      </div>
+    </div>
+  );
+}
+
+function Btn({ children, onClick, variant = "primary", style: s = {} }) {
+  const v = {
+    primary: { background: "var(--green-dim)", border: "1px solid var(--green)", color: "var(--green-hi)" },
+    amber:   { background: "rgba(200,134,10,0.15)", border: "1px solid var(--amber)", color: "var(--amber-hi)" },
+    red:     { background: "rgba(139,32,32,0.2)", border: "1px solid var(--red-hi)", color: "var(--red-hi)" },
+    ghost:   { background: "transparent", border: "1px solid var(--border)", color: "var(--text-dim)" },
+    outline: { background: "transparent", border: "1px solid var(--red)", color: "var(--red-hi)" },
+  };
+  return (
+    <button onClick={onClick}
+      style={{ width: "100%", padding: "13px", fontFamily: "var(--head)", fontSize: 20, letterSpacing: "0.12em", cursor: "pointer", borderRadius: 0, ...v[variant], ...s }}>
+      {children}
+    </button>
+  );
+}
+
+// ── CAPTAIN PRICE PIXEL ART ──
+// 5 states: 0=starving, 1=hungry, 2=fueled, 3=satisfied, 4=stuffed/happy
+function CaptainPrice({ pct }) {
+  const stage = pct <= 0 ? 0 : pct < 0.3 ? 1 : pct < 0.65 ? 2 : pct < 1.0 ? 3 : 4;
+
+  const [prevStage, setPrevStage] = useState(stage);
+  const [flash, setFlash] = useState(false);
+  useEffect(() => {
+    if (stage !== prevStage) {
+      setFlash(true);
+      setTimeout(() => setFlash(false), 400);
+      setPrevStage(stage);
+    }
+  }, [stage]);
+
+  const PIXEL = 5; // each pixel = 5px
+
+  // Color palette
+  const _ = null;          // transparent
+  const S = "#2a1f14";     // skin shadow
+  const K = "#3d2b1a";     // skin mid
+  const F = "#5c3d22";     // skin base
+  const L = "#7a5230";     // skin light
+  const H = "#1a1a1a";     // hair/beard dark
+  const B = "#2d2d2d";     // beard mid
+  const G = "#888888";     // grey beard
+  const W = "#cccccc";     // white/light beard
+  const T = "#4a6e3a";     // beret dark green
+  const TL = "#6ab04c";    // beret light
+  const O = "#8b6914";     // beret badge gold
+  const U = "#2d4a6e";     // uniform dark blue
+  const UL = "#3a6090";    // uniform light
+  const E = "#1a2510";     // eyes dark
+  const EW = "#d4e8c8";    // eye white
+    const P = "#c8860a";     // pipe gold
+  const PD = "#7a4f0a";    // pipe dark
+  const SM = "#e8e0d0";    // pipe smoke
+  const R = "#c0392b";     // red angry
+  const X = "#000000";     // outline
+
+  // Mouth/expression per stage
+  // stage 0: flat/grim, 1: slight frown, 2: neutral, 3: slight smile, 4: big grin
+
+  // Each frame is a 16x20 pixel grid
+  // We define shared base + per-stage mouth/eyes overlay
+
+  const frames = [
+    // Stage 0 — STARVING — grim face, furrowed brow, angry red tint
+    {
+      label: "STARVING",
+      quip: "...Where's my bloody rations, soldier.",
+      labelColor: "#c0392b",
+      // pixel grid 16 wide x 22 tall
+      pixels: [
+        [_,_,_,_,T,T,T,T,T,T,T,T,_,_,_,_],
+        [_,_,_,T,T,TL,TL,TL,TL,TL,T,T,T,_,_,_],
+        [_,_,T,T,TL,TL,O,TL,TL,TL,TL,T,T,T,_,_],
+        [_,T,T,TL,TL,TL,TL,TL,TL,TL,TL,TL,T,T,T,_],
+        [_,T,T,T,T,T,T,T,T,T,T,T,T,T,T,_],
+        [_,_,H,H,H,H,H,H,H,H,H,H,H,H,_,_],
+        [_,H,S,S,S,K,K,K,K,K,S,S,S,H,_,_],
+        [_,H,K,F,F,F,R,R,R,F,F,F,K,H,_,_],  // red angry tint in eyes
+        [_,H,F,E,EW,E,F,F,F,E,EW,E,F,H,_,_], // furrowed eyes
+        [_,H,F,F,F,F,F,F,F,F,F,F,F,H,_,_],
+        [_,H,B,B,F,F,F,F,F,F,F,B,B,H,_,_],
+        [_,H,B,G,B,F,F,F,F,F,B,G,B,H,_,_],
+        [_,H,G,W,G,B,F,F,F,B,G,W,G,H,_,_],
+        [_,H,W,W,W,G,B,B,B,G,W,W,W,H,_,_], // grimace mouth
+        [_,_,H,W,W,W,G,G,G,W,W,W,H,_,_,_],
+        [_,_,H,U,U,W,W,W,W,W,U,U,H,_,_,_],
+        [_,U,U,U,U,U,U,U,U,U,U,U,U,U,_,_],
+        [U,U,UL,U,U,U,U,U,U,U,U,U,UL,U,U,_],
+        [U,UL,UL,U,U,U,U,U,U,U,U,UL,UL,U,U,_],
+        [_,U,U,U,U,U,U,U,U,U,U,U,U,U,_,_],
+        [_,_,U,UL,U,U,U,U,U,U,U,UL,U,_,_,_],
+        [_,_,_,U,U,_,_,_,_,_,U,U,_,_,_,_],
+      ]
+    },
+    // Stage 1 — HUNGRY — slight frown, tired
+    {
+      label: "HUNGRY",
+      quip: "I need fuel. Now.",
+      labelColor: "#c8860a",
+      pixels: [
+        [_,_,_,_,T,T,T,T,T,T,T,T,_,_,_,_],
+        [_,_,_,T,T,TL,TL,TL,TL,TL,T,T,T,_,_,_],
+        [_,_,T,T,TL,TL,O,TL,TL,TL,TL,T,T,T,_,_],
+        [_,T,T,TL,TL,TL,TL,TL,TL,TL,TL,TL,T,T,T,_],
+        [_,T,T,T,T,T,T,T,T,T,T,T,T,T,T,_],
+        [_,_,H,H,H,H,H,H,H,H,H,H,H,H,_,_],
+        [_,H,S,S,S,K,K,K,K,K,S,S,S,H,_,_],
+        [_,H,K,F,F,F,F,F,F,F,F,F,K,H,_,_],
+        [_,H,F,E,EW,F,F,F,F,F,EW,E,F,H,_,_],
+        [_,H,F,F,F,F,F,F,F,F,F,F,F,H,_,_],
+        [_,H,B,B,F,F,F,F,F,F,F,B,B,H,_,_],
+        [_,H,B,G,B,F,F,F,F,F,B,G,B,H,_,_],
+        [_,H,G,W,G,B,F,B,F,B,G,W,G,H,_,_], // slight frown
+        [_,H,W,W,W,G,B,_,B,G,W,W,W,H,_,_],
+        [_,_,H,W,W,W,G,_,G,W,W,W,H,_,_,_],
+        [_,_,H,U,U,W,W,W,W,W,U,U,H,_,_,_],
+        [_,U,U,U,U,U,U,U,U,U,U,U,U,U,_,_],
+        [U,U,UL,U,U,U,U,U,U,U,U,U,UL,U,U,_],
+        [U,UL,UL,U,U,U,U,U,U,U,U,UL,UL,U,U,_],
+        [_,U,U,U,U,U,U,U,U,U,U,U,U,U,_,_],
+        [_,_,U,UL,U,U,U,U,U,U,U,UL,U,_,_,_],
+        [_,_,_,U,U,_,_,_,_,_,U,U,_,_,_,_],
+      ]
+    },
+    // Stage 2 — FUELED — neutral, pipe in mouth
+    {
+      label: "FUELED",
+      quip: "Not bad. Keep pushing.",
+      labelColor: "#6ab04c",
+      pixels: [
+        [_,_,_,_,T,T,T,T,T,T,T,T,_,_,_,_],
+        [_,_,_,T,T,TL,TL,TL,TL,TL,T,T,T,_,_,_],
+        [_,_,T,T,TL,TL,O,TL,TL,TL,TL,T,T,T,_,_],
+        [_,T,T,TL,TL,TL,TL,TL,TL,TL,TL,TL,T,T,T,_],
+        [_,T,T,T,T,T,T,T,T,T,T,T,T,T,T,_],
+        [_,_,H,H,H,H,H,H,H,H,H,H,H,H,_,_],
+        [_,H,S,S,S,K,K,K,K,K,S,S,S,H,_,_],
+        [_,H,K,F,F,F,F,F,F,F,F,F,K,H,_,_],
+        [_,H,F,E,EW,F,F,F,F,F,EW,E,F,H,_,_],
+        [_,H,F,F,F,F,F,F,F,F,F,F,F,H,_,_],
+        [_,H,B,B,F,F,F,F,F,F,F,B,B,H,_,_],
+        [_,H,B,G,B,F,F,F,F,F,B,G,B,H,_,_],
+        [_,H,G,W,G,B,F,F,F,B,G,W,G,H,_,_], // neutral mouth
+        [_,H,W,W,W,G,B,B,B,G,W,W,W,H,_,_],
+        [_,_,H,W,W,P,PD,PD,P,W,W,W,H,_,_], // pipe!
+        [_,_,H,U,P,SM,SM,SM,W,W,U,U,H,_,_],
+        [_,U,U,U,PD,U,U,U,U,U,U,U,U,U,_,_],
+        [U,U,UL,U,U,U,U,U,U,U,U,U,UL,U,U,_],
+        [U,UL,UL,U,U,U,U,U,U,U,U,UL,UL,U,U,_],
+        [_,U,U,U,U,U,U,U,U,U,U,U,U,U,_,_],
+        [_,_,U,UL,U,U,U,U,U,U,U,UL,U,_,_,_],
+        [_,_,_,U,U,_,_,_,_,_,U,U,_,_,_,_],
+      ]
+    },
+    // Stage 3 — SATISFIED — slight smile, pipe, relaxed eyes
+    {
+      label: "SATISFIED",
+      quip: "Good. Soldier needs fuel to fight.",
+      labelColor: "#6ab04c",
+      pixels: [
+        [_,_,_,_,T,T,T,T,T,T,T,T,_,_,_,_],
+        [_,_,_,T,T,TL,TL,TL,TL,TL,T,T,T,_,_,_],
+        [_,_,T,T,TL,TL,O,TL,TL,TL,TL,T,T,T,_,_],
+        [_,T,T,TL,TL,TL,TL,TL,TL,TL,TL,TL,T,T,T,_],
+        [_,T,T,T,T,T,T,T,T,T,T,T,T,T,T,_],
+        [_,_,H,H,H,H,H,H,H,H,H,H,H,H,_,_],
+        [_,H,S,S,S,K,K,K,K,K,S,S,S,H,_,_],
+        [_,H,K,F,F,F,F,F,F,F,F,F,K,H,_,_],
+        [_,H,F,E,EW,E,F,F,F,E,EW,E,F,H,_,_], // squinting smile eyes
+        [_,H,F,F,F,F,F,F,F,F,F,F,F,H,_,_],
+        [_,H,B,B,F,F,F,F,F,F,F,B,B,H,_,_],
+        [_,H,B,G,B,F,F,F,F,F,B,G,B,H,_,_],
+        [_,H,G,W,G,B,B,F,B,B,G,W,G,H,_,_], // smile!
+        [_,H,W,W,W,G,W,B,W,G,W,W,W,H,_,_],
+        [_,_,H,W,W,P,PD,PD,P,W,W,W,H,_,_],
+        [_,_,H,U,P,SM,SM,SM,W,W,U,U,H,_,_],
+        [_,U,U,U,PD,U,U,U,U,U,U,U,U,U,_,_],
+        [U,U,UL,U,U,U,U,U,U,U,U,U,UL,U,U,_],
+        [U,UL,UL,U,U,U,U,U,U,U,U,UL,UL,U,U,_],
+        [_,U,U,U,U,U,U,U,U,U,U,U,U,U,_,_],
+        [_,_,U,UL,U,U,U,U,U,U,U,UL,U,_,_,_],
+        [_,_,_,U,U,_,_,_,_,_,U,U,_,_,_,_],
+      ]
+    },
+    // Stage 4 — STUFFED/HAPPY — big grin, eyes closed happy, pipe, little stars
+    {
+      label: "FULL SEND",
+      quip: "Heh. Now THAT'S how you fuel an operator.",
+      labelColor: "#f0a20e",
+      pixels: [
+        [_,_,_,_,T,T,T,T,T,T,T,T,_,_,_,_],
+        [_,_,_,T,T,TL,TL,TL,TL,TL,T,T,T,_,_,_],
+        [_,_,T,T,TL,TL,O,TL,TL,TL,TL,T,T,T,_,_],
+        [_,T,T,TL,TL,TL,TL,TL,TL,TL,TL,TL,T,T,T,_],
+        [_,T,T,T,T,T,T,T,T,T,T,T,T,T,T,_],
+        [_,_,H,H,H,H,H,H,H,H,H,H,H,H,_,_],
+        [_,H,S,S,S,K,K,K,K,K,S,S,S,H,_,_],
+        [_,H,K,F,F,F,F,F,F,F,F,F,K,H,_,_],
+        [_,H,F,H,EW,H,F,F,F,H,EW,H,F,H,_,_], // happy squint ^_^
+        [_,H,F,F,F,F,F,F,F,F,F,F,F,H,_,_],
+        [_,H,B,B,F,F,F,F,F,F,F,B,B,H,_,_],
+        [_,H,B,G,B,F,L,L,L,F,B,G,B,H,_,_], // chubby cheeks
+        [_,H,G,W,G,B,W,W,W,B,G,W,G,H,_,_], // big grin
+        [_,H,W,W,W,W,EW,EW,EW,W,W,W,W,H,_,_],
+        [_,_,H,W,W,P,PD,PD,P,W,W,W,H,_,_],
+        [_,_,H,U,P,SM,SM,SM,W,W,U,U,H,_,_],
+        [_,U,U,U,PD,U,U,U,U,U,U,U,U,U,_,_],
+        [U,U,UL,U,U,U,U,U,U,U,U,U,UL,U,U,_],
+        [U,UL,UL,U,U,U,U,U,U,U,U,UL,UL,U,U,_],
+        [_,U,U,U,U,U,U,U,U,U,U,U,U,U,_,_],
+        [_,_,U,UL,U,U,U,U,U,U,U,UL,U,_,_,_],
+        [_,_,_,U,U,_,_,_,_,_,U,U,_,_,_,_],
+      ]
+    },
+  ];
+
+  const frame = frames[stage];
+  const rows = frame.pixels;
+  const cols = rows[0].length;
+  const canvasW = cols * PIXEL;
+  const canvasH = rows.length * PIXEL;
+
+  // Smoke particles for fueled+ stages
+  const smokeParticles = stage >= 2 ? [
+    { x: 4, y: -1, size: 3, opacity: 0.5 },
+    { x: 6, y: -3, size: 4, opacity: 0.35 },
+    { x: 3, y: -5, size: 5, opacity: 0.2 },
+  ] : [];
+
+  // Stars for full send
+  const stars = stage === 4 ? [
+    { x: canvasW - 8, y: 8, c: "#f0a20e" },
+    { x: canvasW - 16, y: 2, c: "#6ab04c" },
+    { x: 4, y: 6, c: "#f0a20e" },
+    { x: 10, y: 0, c: "#6ab04c" },
+  ] : [];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+      {/* Status label */}
+      <div style={{ fontFamily: "var(--mono)", fontSize: 10, color: frame.labelColor, letterSpacing: "0.14em", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+        <span className="blink" style={{ color: frame.labelColor }}>■</span>
+        OPERATOR STATUS: {frame.label}
+      </div>
+
+      {/* Pixel canvas */}
+      <div style={{ position: "relative", display: "inline-block", imageRendering: "pixelated", filter: flash ? "brightness(1.6)" : "brightness(1)", transition: "filter 0.15s" }}>
+        <svg
+          width={canvasW}
+          height={canvasH + 16}
+          style={{ imageRendering: "pixelated", display: "block" }}
+        >
+          {/* Pixel rows */}
+          {rows.map((row, ri) =>
+            row.map((color, ci) =>
+              color ? (
+                <rect
+                  key={`${ri}-${ci}`}
+                  x={ci * PIXEL}
+                  y={ri * PIXEL}
+                  width={PIXEL}
+                  height={PIXEL}
+                  fill={color}
+                />
+              ) : null
+            )
+          )}
+
+          {/* Smoke from pipe */}
+          {smokeParticles.map((s, i) => (
+            <circle
+              key={`smoke-${i}`}
+              cx={s.x * PIXEL + canvasW * 0.25}
+              cy={canvasH - 7 * PIXEL + s.y * PIXEL}
+              r={s.size}
+              fill="#d4e8c8"
+              opacity={s.opacity}
+            >
+              <animate attributeName="cy" values={`${canvasH - 7*PIXEL + s.y*PIXEL};${canvasH - 9*PIXEL + s.y*PIXEL};${canvasH - 7*PIXEL + s.y*PIXEL}`} dur={`${1.5 + i*0.4}s`} repeatCount="indefinite" />
+              <animate attributeName="opacity" values={`${s.opacity};${s.opacity*0.5};${s.opacity}`} dur={`${1.5 + i*0.4}s`} repeatCount="indefinite" />
+            </circle>
+          ))}
+
+          {/* Stars for full send */}
+          {stars.map((s, i) => (
+            <text key={`star-${i}`} x={s.x} y={s.y + 8} fill={s.c} fontSize="8" fontFamily="monospace">
+              <animate attributeName="opacity" values="1;0.2;1" dur={`${0.6 + i*0.2}s`} repeatCount="indefinite" />
+              ★
+            </text>
+          ))}
+        </svg>
+      </div>
+
+      {/* Quip */}
+      <div style={{ marginTop: 10, padding: "8px 14px", background: "var(--bg3)", border: "1px solid var(--border)", borderLeft: `3px solid ${frame.labelColor}`, maxWidth: canvasW + 40, width: "100%" }}>
+        <div style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--text-dim)", marginBottom: 3, letterSpacing: "0.08em" }}>CPT. PRICE //</div>
+        <div style={{ fontFamily: "var(--mono)", fontSize: 10, color: frame.labelColor, letterSpacing: "0.04em", lineHeight: 1.5 }}>"{frame.quip}"</div>
+      </div>
+
+      {/* Progress bar under Price */}
+      <div style={{ marginTop: 8, width: "100%", maxWidth: canvasW + 40 }}>
+        <div style={{ height: 4, background: "var(--bg3)", border: "1px solid var(--border)", overflow: "hidden" }}>
+          <div style={{ height: "100%", width: `${Math.min(pct, 1) * 100}%`, background: frame.labelColor, transition: "width 0.5s ease, background 0.4s ease" }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── ADD FOOD MODAL ──
+function AddFoodModal({ open, onClose, savedFoods, onAddEntry, defaultMeal = "Breakfast", editEntry = null }) {
+  const blank = { name: "", baseAmount: "100", unit: "g", calories: "", protein: "", carbs: "", fat: "", amount: "100", meal: defaultMeal, saveFood: false };
+  const [form, setForm] = useState(blank);
+  const [tab, setTab] = useState("quick");
+  const [search, setSearch] = useState("");
+  const [ref] = useState(gridRef);
+
+  useEffect(() => {
+    if (open) {
+      if (editEntry) {
+        setForm({ name: editEntry.name, baseAmount: String(editEntry.baseAmount), unit: editEntry.unit, calories: String(editEntry.baseCals), protein: String(editEntry.baseProt), carbs: String(editEntry.baseCarbs), fat: String(editEntry.baseFat), amount: String(editEntry.amount), meal: editEntry.meal, saveFood: false });
+        setTab("custom");
+      } else {
+        setForm({ ...blank, meal: defaultMeal });
+        setTab("quick");
+      }
+      setSearch("");
+    }
+  }, [open, editEntry, defaultMeal]);
+
+  const f = k => v => setForm(p => ({ ...p, [k]: v }));
+
+  const scaled = (() => {
+    const ba = parseFloat(form.baseAmount) || 1;
+    const am = parseFloat(form.amount) || 0;
+    const m = am / ba;
+    return {
+      calories: Math.round((parseFloat(form.calories)||0) * m * 10) / 10,
+      protein:  Math.round((parseFloat(form.protein) ||0) * m * 10) / 10,
+      carbs:    Math.round((parseFloat(form.carbs)   ||0) * m * 10) / 10,
+      fat:      Math.round((parseFloat(form.fat)     ||0) * m * 10) / 10,
+    };
+  })();
+
+  const handleSubmit = () => {
+    if (!form.name || !form.calories) return;
+    const ba = parseFloat(form.baseAmount) || 1;
+    const am = parseFloat(form.amount) || ba;
+    const entry = { id: editEntry ? editEntry.id : `e${Date.now()}`, name: form.name, meal: form.meal, baseAmount: ba, unit: form.unit, amount: am, baseCals: parseFloat(form.calories)||0, baseProt: parseFloat(form.protein)||0, baseCarbs: parseFloat(form.carbs)||0, baseFat: parseFloat(form.fat)||0, ...scaled };
+    const foodToSave = form.saveFood ? { id: `sf${Date.now()}`, name: form.name, baseAmount: ba, unit: form.unit, calories: parseFloat(form.calories)||0, protein: parseFloat(form.protein)||0, carbs: parseFloat(form.carbs)||0, fat: parseFloat(form.fat)||0 } : null;
+    onAddEntry(entry, !!editEntry, foodToSave);
+    onClose();
+  };
+
+  const filtered = savedFoods.filter(fd => fd.name.toLowerCase().includes(search.toLowerCase()));
+
+  return (
+    <Modal open={open} onClose={onClose} title={editEntry ? "AMEND RATION" : "LOG RATION"} subtitle={`FIELD OPS // REF: ${ref}`}>
+      {!editEntry && (
+        <div style={{ display: "flex", gap: 0, marginBottom: 18, border: "1px solid var(--border)" }}>
+          {[["quick","◈ FIELD RATIONS"],["custom","⊕ NEW ENTRY"]].map(([t, label]) => (
+            <button key={t} onClick={() => setTab(t)}
+              style={{ flex: 1, padding: "11px", border: "none", borderRight: t === "quick" ? "1px solid var(--border)" : "none", cursor: "pointer", fontFamily: "var(--head)", fontSize: 16, letterSpacing: "0.08em", background: tab === t ? "var(--green-dim)" : "transparent", color: tab === t ? "var(--green-hi)" : "var(--text-dim)" }}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {tab === "quick" && !editEntry && (
+        <>
+          <Field value={search} onChange={setSearch} placeholder="SEARCH DATABASE..." />
+          <div style={{ maxHeight: 300, overflowY: "auto" }}>
+            {filtered.length === 0 && (
+              <div style={{ textAlign: "center", padding: "24px 0", fontFamily: "var(--mono)", fontSize: 11, color: "var(--text-dim)", letterSpacing: "0.08em", borderTop: "1px solid var(--border)" }}>
+                [EMPTY DATABASE — ADD CUSTOM ENTRIES]
+              </div>
+            )}
+            {filtered.map(food => (
+              <button key={food.id} onClick={() => { setForm(p => ({...p, name: food.name, baseAmount: String(food.baseAmount), unit: food.unit, calories: String(food.calories), protein: String(food.protein), carbs: String(food.carbs), fat: String(food.fat), amount: String(food.baseAmount)})); setTab("custom"); }}
+                style={{ width: "100%", background: "var(--bg3)", border: "1px solid var(--border)", borderLeft: "3px solid var(--green-dim)", padding: "12px 14px", marginBottom: 6, cursor: "pointer", textAlign: "left", display: "flex", justifyContent: "space-between", alignItems: "center", borderRadius: 0 }}>
+                <div>
+                  <div style={{ color: "var(--text-hi)", fontWeight: 700, fontSize: 15, fontFamily: "var(--body)" }}>{food.name.toUpperCase()}</div>
+                  <div style={{ color: "var(--text-dim)", fontSize: 11, marginTop: 2, fontFamily: "var(--mono)", letterSpacing: "0.04em" }}>
+                    /{food.baseAmount}{food.unit === "g" ? "g" : "srv"} · {food.calories}kcal · {food.protein}g PRO
+                  </div>
+                </div>
+                <span style={{ color: "var(--green-hi)", fontSize: 18, fontFamily: "var(--mono)", border: "1px solid var(--green-dim)", width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center" }}>+</span>
+              </button>
+            ))}
+          </div>
+          <button onClick={() => setTab("custom")}
+            style={{ width: "100%", marginTop: 10, padding: "11px", border: "1px dashed var(--border)", background: "transparent", color: "var(--text-dim)", cursor: "pointer", fontFamily: "var(--mono)", fontSize: 11, letterSpacing: "0.08em", borderRadius: 0 }}>
+            [ + CREATE NEW ENTRY ]
+          </button>
+        </>
+      )}
+
+      {(tab === "custom" || editEntry) && (
+        <>
+          <Field label="DESIGNATION" value={form.name} onChange={f("name")} placeholder="e.g. CHICKEN BREAST" />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <Field label="BASE QTY" value={form.baseAmount} onChange={f("baseAmount")} type="number" small />
+            <Sel label="UNIT" value={form.unit} onChange={f("unit")} options={[{value:"g",label:"GRAMS (g)"},{value:"serving",label:"SERVING"}]} />
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <Field label="CALORIES" value={form.calories} onChange={f("calories")} type="number" unit="kcal" small />
+            <Field label="PROTEIN" value={form.protein} onChange={f("protein")} type="number" unit="g" small />
+            <Field label="CARBS" value={form.carbs} onChange={f("carbs")} type="number" unit="g" small />
+            <Field label="FAT" value={form.fat} onChange={f("fat")} type="number" unit="g" small />
+          </div>
+
+          <div style={{ borderTop: "1px solid var(--border)", borderBottom: "1px solid var(--border)", margin: "14px 0", padding: "14px 0" }}>
+            <Sel label="MEAL PERIOD" value={form.meal} onChange={f("meal")} options={MEALS.map(m => ({value:m, label:`${MEAL_CODE[m]} // ${m.toUpperCase()} [${MEAL_TIME[m]}]`}))} />
+            <Field label={`CONSUMED QTY (${form.unit === "g" ? "GRAMS" : "SERVINGS"})`} value={form.amount} onChange={f("amount")} type="number" unit={form.unit === "g" ? "g" : "×"} />
+          </div>
+
+          {form.name && parseFloat(form.calories) > 0 && (
+            <div style={{ background: "var(--bg)", border: "1px solid var(--green-dim)", borderLeft: "3px solid var(--green)", padding: "12px 14px", marginBottom: 14 }}>
+              <div style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--green-hi)", letterSpacing: "0.14em", marginBottom: 10 }}>◈ COMPUTED OUTPUT</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 0 }}>
+                {[["KCAL", scaled.calories, "var(--amber-hi)"],["PRO", `${scaled.protein}g`, "var(--green-hi)"],["CHO", `${scaled.carbs}g`, "var(--text)"],["FAT", `${scaled.fat}g`, "var(--text-dim)"]].map(([l, v, c], i) => (
+                  <div key={l} style={{ textAlign: "center", padding: "8px 4px", borderRight: i < 3 ? "1px solid var(--border)" : "none" }}>
+                    <div style={{ fontFamily: "var(--head)", fontSize: 22, color: c, letterSpacing: "0.04em", lineHeight: 1 }}>{v}</div>
+                    <div style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--text-dim)", marginTop: 3 }}>{l}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {!editEntry && (
+            <div onClick={() => f("saveFood")(!form.saveFood)}
+              style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16, cursor: "pointer", padding: "11px 14px", background: "var(--bg3)", border: `1px solid ${form.saveFood ? "var(--green)" : "var(--border)"}` }}>
+              <div style={{ width: 18, height: 18, border: `2px solid ${form.saveFood ? "var(--green-hi)" : "var(--border)"}`, background: form.saveFood ? "var(--green-dim)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                {form.saveFood && <span style={{ color: "var(--green-hi)", fontSize: 12, fontWeight: 900, lineHeight: 1 }}>✓</span>}
+              </div>
+              <span style={{ color: form.saveFood ? "var(--text-hi)" : "var(--text-dim)", fontSize: 13, fontFamily: "var(--mono)", letterSpacing: "0.06em" }}>
+                SAVE TO FIELD DATABASE
+              </span>
+            </div>
+          )}
+
+          <Btn onClick={handleSubmit}>{editEntry ? "◈ UPDATE ENTRY" : "◈ CONFIRM RATION"}</Btn>
+        </>
+      )}
+    </Modal>
+  );
+}
+
+// ── WEIGHT MODAL ──
+function WeightModal({ open, onClose, onAdd }) {
+  const [val, setVal] = useState("");
+  const [unit, setUnit] = useState("kg");
+  return (
+    <Modal open={open} onClose={onClose} title="LOG BODY WEIGHT" subtitle="OPERATOR // BIOMETRICS">
+      <Field label="WEIGHT READING" value={val} onChange={setVal} type="number" placeholder="75.5" unit={unit} />
+      <Sel label="UNIT" value={unit} onChange={setUnit} options={[{value:"kg",label:"KILOGRAMS (kg)"},{value:"lbs",label:"POUNDS (lbs)"}]} />
+      <Btn onClick={() => { if (val) { onAdd(parseFloat(val), unit); onClose(); setVal(""); } }}>◈ LOG WEIGHT</Btn>
+    </Modal>
+  );
+}
+
+// ── DASHBOARD ──
+function Dashboard({ entries, goals, savedFoods, onAddFood, onDeleteEntry }) {
+  const today = todayStr();
+  const todayEntries = entries[today] || [];
+  const totals = totalForDay(todayEntries);
+  const remaining = goals.calories - totals.calories;
+  const pct = Math.min(totals.calories / goals.calories, 1);
+  const status = pct < 0.4 ? "UNDER-FUELED" : pct < 0.85 ? "ON TRACK" : pct < 1.05 ? "TARGET MET" : "EXCEEDED";
+  const statusV = pct > 1 ? "red" : pct > 0.85 ? "green" : "amber";
+
+  const [addModal, setAddModal] = useState(false);
+  const [addMeal, setAddMeal] = useState("Breakfast");
+  const [editEntry, setEditEntry] = useState(null);
+
+  const dateStr = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" }).toUpperCase();
+
+  return (
+    <div style={{ paddingBottom: 110 }} className="fade-in">
+
+      {/* TOP BAR */}
+      <div style={{ background: "var(--bg2)", borderBottom: "1px solid var(--border)", padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <div style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--text-dim)", letterSpacing: "0.12em" }}>OPERATOR // NUTRITION SYSTEM v2.4</div>
+          <div style={{ fontFamily: "var(--head)", fontSize: 22, color: "var(--green-hi)", letterSpacing: "0.08em", lineHeight: 1.1 }}>DAILY OPS LOG</div>
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <Clock />
+          <div style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--text-dim)", marginTop: 3 }}>LOCAL TIME</div>
+        </div>
+      </div>
+
+      {/* DATE STRIP */}
+      <div style={{ background: "var(--green-dim)", padding: "6px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--green-hi)", letterSpacing: "0.1em" }}>{dateStr}</span>
+        <StatusBadge variant={statusV}>{status}</StatusBadge>
+      </div>
+
+      {/* CAPTAIN PRICE PANEL */}
+      <div style={{ margin: "12px 14px 0" }}>
+        <Panel style={{ padding: "16px", display: "flex", flexDirection: "column", alignItems: "center" }}>
+          <div style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--text-dim)", letterSpacing: "0.14em", marginBottom: 12, alignSelf: "flex-start" }}>◈ OPERATOR MORALE SYSTEM</div>
+          <CaptainPrice pct={pct} />
+        </Panel>
+      </div>
+
+      {/* MAIN CALORIE PANEL */}
+      <div style={{ margin: "12px 14px 0" }}>
+        <Panel style={{ padding: "16px" }}>
+          <div style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--text-dim)", letterSpacing: "0.14em", marginBottom: 10 }}>◈ PRIMARY FUEL STATUS</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <div style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--text-dim)", marginBottom: 4 }}>KCAL REMAINING</div>
+              <div style={{ fontFamily: "var(--head)", fontSize: 68, color: remaining < 0 ? "var(--red-hi)" : "var(--text-hi)", lineHeight: 0.85, letterSpacing: "-0.01em" }}>
+                {Math.abs(Math.round(remaining))}
+              </div>
+              <div style={{ fontFamily: "var(--mono)", fontSize: 10, color: remaining < 0 ? "var(--red-hi)" : "var(--text-dim)", marginTop: 6, letterSpacing: "0.06em" }}>
+                {remaining < 0 ? "▲ LIMIT EXCEEDED" : "▼ UNDER LIMIT"}
+              </div>
+            </div>
+
+            {/* Radial status */}
+            <div style={{ position: "relative" }}>
+              <svg width="90" height="90" style={{ transform: "rotate(-90deg)" }}>
+                {/* Outer ring */}
+                <circle cx="45" cy="45" r="38" fill="none" stroke="var(--border)" strokeWidth="2" strokeDasharray="4 4" />
+                {/* Track */}
+                <circle cx="45" cy="45" r="30" fill="none" stroke="var(--bg3)" strokeWidth="8" />
+                {/* Fill */}
+                <circle cx="45" cy="45" r="30" fill="none"
+                  stroke={remaining < 0 ? "var(--red-hi)" : pct > 0.85 ? "var(--green-hi)" : "var(--amber-hi)"}
+                  strokeWidth="8"
+                  strokeDasharray={2 * Math.PI * 30}
+                  strokeDashoffset={2 * Math.PI * 30 * (1 - pct)}
+                  strokeLinecap="square"
+                  style={{ transition: "stroke-dashoffset 0.6s ease" }} />
+              </svg>
+              <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                <div style={{ fontFamily: "var(--head)", fontSize: 18, color: "var(--text-hi)", lineHeight: 1 }}>{Math.round(pct * 100)}%</div>
+                <div style={{ fontFamily: "var(--mono)", fontSize: 8, color: "var(--text-dim)", letterSpacing: "0.04em" }}>USED</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Stats row */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 0, marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+            {[["TARGET", goals.calories, "var(--text-dim)"],["CONSUMED", Math.round(totals.calories), "var(--text-hi)"],["DEFICIT", Math.abs(Math.round(remaining)), remaining < 0 ? "var(--red-hi)" : "var(--green-hi)"]].map(([l, v, c], i) => (
+              <div key={l} style={{ textAlign: "center", borderRight: i < 2 ? "1px solid var(--border)" : "none" }}>
+                <div style={{ fontFamily: "var(--head)", fontSize: 24, color: c, letterSpacing: "0.04em" }}>{v}</div>
+                <div style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--text-dim)", letterSpacing: "0.08em" }}>{l}</div>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      </div>
+
+      {/* MACROS PANEL */}
+      <div style={{ margin: "10px 14px 0" }}>
+        <Panel style={{ padding: "14px 16px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+            <div style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--text-dim)", letterSpacing: "0.14em" }}>◈ MACRO DISTRIBUTION</div>
+            <div style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--text-dim)" }}>[LIVE]<span className="blink" style={{ color: "var(--green-hi)" }}> ■</span></div>
+          </div>
+          <TacBar label="PROTEIN" code="PRO" value={totals.protein} goal={goals.protein} color="prot" />
+          <TacBar label="CARBS" code="CHO" value={totals.carbs} goal={goals.carbs} color="carb" />
+          <TacBar label="FAT" code="LIP" value={totals.fat} goal={goals.fat} color="fat" />
+        </Panel>
+      </div>
+
+      {/* MEAL SECTIONS */}
+      {MEALS.map((meal, mi) => {
+        const mealEntries = todayEntries.filter(e => e.meal === meal);
+        const mealCals = mealEntries.reduce((s, e) => s + e.calories, 0);
+        return (
+          <div key={meal} style={{ margin: "10px 14px 0" }}>
+            <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderLeft: "3px solid var(--green-dim)", overflow: "hidden" }}>
+              {/* Meal header */}
+              <div style={{ padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border2)" }}>
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--green-hi)", letterSpacing: "0.1em" }}>{MEAL_CODE[meal]}</span>
+                    <span style={{ fontFamily: "var(--head)", fontSize: 20, color: "var(--text-hi)", letterSpacing: "0.08em" }}>{meal.toUpperCase()}</span>
+                    {mealCals > 0 && <StatusBadge variant="green">{Math.round(mealCals)} KCAL</StatusBadge>}
+                  </div>
+                  <div style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--text-dim)", marginTop: 2, letterSpacing: "0.06em" }}>[{MEAL_TIME[meal]}]</div>
+                </div>
+                <button onClick={() => { setAddMeal(meal); setAddModal(true); }}
+                  style={{ width: 32, height: 32, background: "var(--green-dim)", border: "1px solid var(--green)", color: "var(--green-hi)", fontSize: 18, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--mono)", borderRadius: 0 }}>+</button>
+              </div>
+
+              {/* Entries */}
+              {mealEntries.map((entry, ei) => (
+                <div key={entry.id} style={{ padding: "10px 14px", borderBottom: "1px solid var(--border2)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, background: ei % 2 === 0 ? "transparent" : "rgba(0,0,0,0.15)" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ color: "var(--text-hi)", fontSize: 14, fontWeight: 700, fontFamily: "var(--body)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{entry.name.toUpperCase()}</div>
+                    <div style={{ color: "var(--text-dim)", fontSize: 11, marginTop: 2, fontFamily: "var(--mono)", letterSpacing: "0.04em" }}>
+                      {entry.amount}{entry.unit === "g" ? "g" : "×srv"} · PRO:{entry.protein}g CHO:{entry.carbs}g FAT:{entry.fat}g
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontFamily: "var(--head)", fontSize: 22, color: "var(--amber-hi)", letterSpacing: "0.02em", lineHeight: 1 }}>{Math.round(entry.calories)}</div>
+                      <div style={{ fontFamily: "var(--mono)", fontSize: 8, color: "var(--text-dim)", letterSpacing: "0.08em" }}>KCAL</div>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                      <button onClick={() => setEditEntry(entry)} style={{ width: 28, height: 28, background: "var(--bg2)", border: "1px solid var(--border)", color: "var(--text-dim)", fontSize: 11, cursor: "pointer", display:"flex",alignItems:"center",justifyContent:"center", borderRadius: 0 }}>✏</button>
+                      <button onClick={() => onDeleteEntry(today, entry.id)} style={{ width: 28, height: 28, background: "var(--bg2)", border: "1px solid var(--border)", color: "var(--red)", fontSize: 11, cursor: "pointer", display:"flex",alignItems:"center",justifyContent:"center", borderRadius: 0 }}>✕</button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {mealEntries.length === 0 && (
+                <div style={{ padding: "12px 14px" }}>
+                  <span style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--text-dim)", letterSpacing: "0.06em" }}>[ NO ENTRIES — AWAITING INPUT ]</span>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+
+      <AddFoodModal open={addModal || !!editEntry} onClose={() => { setAddModal(false); setEditEntry(null); }}
+        savedFoods={savedFoods} defaultMeal={addMeal} editEntry={editEntry}
+        onAddEntry={(entry, isEdit, foodToSave) => onAddFood(today, entry, isEdit, foodToSave)} />
+    </div>
+  );
+}
+
+// ── PROGRESS ──
+function Progress({ entries, weights, goals, onAddWeight }) {
+  const [weightModal, setWeightModal] = useState(false);
+
+  const last14 = Array.from({ length: 14 }, (_, i) => {
+    const d = new Date(); d.setDate(d.getDate() - (13 - i));
+    return totalForDay(entries[d.toISOString().slice(0,10)] || []).calories;
+  });
+
+  const last7 = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(); d.setDate(d.getDate() - (6 - i));
+    return d.toISOString().slice(0, 10);
+  });
+
+  const tracked = last14.filter(Boolean);
+  const avgCals = tracked.length ? Math.round(tracked.reduce((a,b)=>a+b,0)/tracked.length) : 0;
+  const recentWeights = weights.slice(-14);
+
+  return (
+    <div style={{ paddingBottom: 110 }} className="fade-in">
+      <div style={{ background: "var(--bg2)", borderBottom: "1px solid var(--border)", padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <div style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--text-dim)", letterSpacing: "0.12em" }}>OPERATOR // ANALYTICS</div>
+          <div style={{ fontFamily: "var(--head)", fontSize: 22, color: "var(--green-hi)", letterSpacing: "0.08em" }}>PERFORMANCE DATA</div>
+        </div>
+        <Clock />
+      </div>
+
+      {/* 14-day trend */}
+      <div style={{ margin: "12px 14px 0" }}>
+        <Panel style={{ padding: "14px 16px" }}>
+          <div style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--text-dim)", letterSpacing: "0.14em", marginBottom: 10 }}>◈ 14-DAY CALORIC TREND</div>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+            <div>
+              <div style={{ fontFamily: "var(--head)", fontSize: 38, color: "var(--text-hi)", lineHeight: 1 }}>{avgCals}</div>
+              <div style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--text-dim)", letterSpacing: "0.08em" }}>AVG KCAL / DAY</div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontFamily: "var(--head)", fontSize: 22, color: "var(--amber-hi)" }}>{goals.calories}</div>
+              <div style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--text-dim)" }}>DAILY TARGET</div>
+            </div>
+          </div>
+          <SparkLine data={last14} color="var(--green-hi)" height={60} />
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
+            <span style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--text-dim)" }}>D-14</span>
+            <span style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--green-hi)" }}>TODAY</span>
+          </div>
+        </Panel>
+      </div>
+
+      {/* 7-day grid */}
+      <div style={{ margin: "10px 14px 0" }}>
+        <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", overflow: "hidden" }}>
+          <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between" }}>
+            <span style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--green-hi)", letterSpacing: "0.12em" }}>◈ 7-DAY MISSION SUMMARY</span>
+            <span style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--text-dim)" }}>KCAL</span>
+          </div>
+          <div style={{ padding: "14px" }}>
+            {last7.map(day => {
+              const t = totalForDay(entries[day] || []);
+              const pct = Math.min(t.calories / goals.calories, 1.5);
+              const isToday = day === todayStr();
+              const label = new Date(day + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+              const over = pct > 1.05;
+              return (
+                <div key={day} style={{ marginBottom: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, alignItems: "center" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      {isToday && <span style={{ fontFamily: "var(--mono)", fontSize: 8, color: "var(--green-hi)", border: "1px solid var(--green-dim)", padding: "1px 5px" }}>NOW</span>}
+                      <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: isToday ? "var(--text-hi)" : "var(--text)", letterSpacing: "0.06em" }}>{label.toUpperCase()}</span>
+                    </div>
+                    <span style={{ fontFamily: "var(--head)", fontSize: 16, color: over ? "var(--red-hi)" : t.calories ? "var(--text-hi)" : "var(--text-dim)" }}>
+                      {t.calories ? `${Math.round(t.calories)}` : "---"}
+                    </span>
+                  </div>
+                  <div style={{ height: 4, background: "var(--bg)", border: "1px solid var(--border2)", overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${pct * 100}%`, background: over ? "var(--red-hi)" : isToday ? "var(--green-hi)" : "var(--green-dim)", transition: "width 0.4s ease" }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Macro averages */}
+      <div style={{ margin: "10px 14px 0" }}>
+        <Panel style={{ padding: "14px 16px" }}>
+          <div style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--text-dim)", letterSpacing: "0.14em", marginBottom: 14 }}>◈ 7-DAY MACRO AVERAGES</div>
+          {(() => {
+            const sums = last7.reduce((acc, day) => {
+              const t = totalForDay(entries[day] || []);
+              acc.p += t.protein; acc.c += t.carbs; acc.f += t.fat;
+              if (t.calories > 0) acc.days++;
+              return acc;
+            }, { p: 0, c: 0, f: 0, days: 0 });
+            const d = sums.days || 1;
+            return (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8 }}>
+                {[["PROTEIN","PRO",Math.round(sums.p/d),goals.protein,"var(--green-hi)"],["CARBS","CHO",Math.round(sums.c/d),goals.carbs,"var(--amber-hi)"],["FAT","LIP",Math.round(sums.f/d),goals.fat,"var(--text)"]].map(([l, code, v, g, c]) => {
+                  const p = Math.min(v / g, 1);
+                  return (
+                    <div key={l} style={{ background: "var(--bg)", border: "1px solid var(--border)", padding: "12px 8px", textAlign: "center" }}>
+                      <div style={{ fontFamily: "var(--mono)", fontSize: 8, color: "var(--text-dim)", letterSpacing: "0.1em", marginBottom: 6 }}>[{code}]</div>
+                      <div style={{ fontFamily: "var(--head)", fontSize: 26, color: c, lineHeight: 1 }}>{v}g</div>
+                      <div style={{ fontFamily: "var(--mono)", fontSize: 8, color: "var(--text-dim)", marginTop: 4, marginBottom: 8 }}>AVG / {g}g</div>
+                      <div style={{ height: 3, background: "var(--bg2)", border: "1px solid var(--border)" }}>
+                        <div style={{ height: "100%", width: `${p*100}%`, background: c }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+        </Panel>
+      </div>
+
+      {/* Weight log */}
+      <div style={{ margin: "10px 14px 0" }}>
+        <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", overflow: "hidden" }}>
+          <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--green-hi)", letterSpacing: "0.12em" }}>◈ BIOMETRIC — BODY WEIGHT</span>
+            <button onClick={() => setWeightModal(true)} style={{ padding: "6px 14px", border: "1px solid var(--green)", background: "var(--green-dim)", color: "var(--green-hi)", fontFamily: "var(--head)", fontSize: 15, letterSpacing: "0.08em", cursor: "pointer", borderRadius: 0 }}>+ LOG</button>
+          </div>
+          <div style={{ padding: "14px" }}>
+            {recentWeights.length > 1 && <SparkLine data={recentWeights.map(w => w.value)} color="var(--amber-hi)" height={56} />}
+            {recentWeights.length === 0 && <div style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--text-dim)", textAlign: "center", padding: "14px 0", letterSpacing: "0.06em" }}>[AWAITING BIOMETRIC DATA]</div>}
+            <div style={{ marginTop: 10 }}>
+              {recentWeights.slice().reverse().slice(0, 6).map((w, i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "9px 0", borderBottom: "1px solid var(--border2)", alignItems: "center" }}>
+                  <span style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--text-dim)", letterSpacing: "0.06em" }}>
+                    {new Date(w.date + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }).toUpperCase()}
+                  </span>
+                  <span style={{ fontFamily: "var(--head)", fontSize: 20, color: "var(--text-hi)" }}>{w.value} <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--text-dim)" }}>{w.unit}</span></span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <WeightModal open={weightModal} onClose={() => setWeightModal(false)} onAdd={onAddWeight} />
+    </div>
+  );
+}
+
+// ── SAVED FOODS ──
+function SavedFoodsScreen({ savedFoods, onDelete, onEdit, onAddToLog }) {
+  const [search, setSearch] = useState("");
+  const [editFood, setEditFood] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [quickAdd, setQuickAdd] = useState(null);
+
+  const filtered = savedFoods.filter(f => f.name.toLowerCase().includes(search.toLowerCase()));
+
+  return (
+    <div style={{ paddingBottom: 110 }} className="fade-in">
+      <div style={{ background: "var(--bg2)", borderBottom: "1px solid var(--border)", padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <div style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--text-dim)", letterSpacing: "0.12em" }}>OPERATOR // FIELD DATABASE</div>
+          <div style={{ fontFamily: "var(--head)", fontSize: 22, color: "var(--green-hi)", letterSpacing: "0.08em" }}>RATION DATABASE</div>
+        </div>
+        <Clock />
+      </div>
+
+      <div style={{ padding: "12px 14px 6px" }}>
+        <Field value={search} onChange={setSearch} placeholder="SEARCH RATION DATABASE..." />
+      </div>
+
+      <div style={{ padding: "0 14px" }}>
+        {filtered.length === 0 && (
+          <div style={{ textAlign: "center", padding: "50px 20px", border: "1px dashed var(--border)", background: "var(--bg3)" }}>
+            <div style={{ fontFamily: "var(--head)", fontSize: 26, color: "var(--text-dim)", letterSpacing: "0.1em" }}>DATABASE EMPTY</div>
+            <div style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--text-dim)", marginTop: 8, letterSpacing: "0.06em" }}>[ ADD ENTRIES AND SAVE TO DATABASE ]</div>
+          </div>
+        )}
+        {filtered.map(food => (
+          <div key={food.id} style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderLeft: "3px solid var(--green-dim)", marginBottom: 8, overflow: "hidden" }}>
+            <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--border2)", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontFamily: "var(--body)", fontSize: 15, fontWeight: 700, color: "var(--text-hi)" }}>{food.name.toUpperCase()}</div>
+                <div style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--text-dim)", marginTop: 3, letterSpacing: "0.04em" }}>
+                  /{food.baseAmount}{food.unit === "g" ? "g" : "srv"} · {food.calories}kcal · PRO:{food.protein}g CHO:{food.carbs}g FAT:{food.fat}g
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 4, marginLeft: 10 }}>
+                <button onClick={() => { setEditFood(food); setEditForm({...food, baseAmount: String(food.baseAmount), calories: String(food.calories), protein: String(food.protein), carbs: String(food.carbs), fat: String(food.fat)}); }}
+                  style={{ width: 28, height: 28, background: "var(--bg2)", border: "1px solid var(--border)", color: "var(--text-dim)", fontSize: 11, cursor: "pointer", display:"flex",alignItems:"center",justifyContent:"center", borderRadius: 0 }}>✏</button>
+                <button onClick={() => onDelete(food.id)}
+                  style={{ width: 28, height: 28, background: "var(--bg2)", border: "1px solid var(--border)", color: "var(--red)", fontSize: 11, cursor: "pointer", display:"flex",alignItems:"center",justifyContent:"center", borderRadius: 0 }}>✕</button>
+              </div>
+            </div>
+            <button onClick={() => setQuickAdd(food)}
+              style={{ width: "100%", padding: "9px", border: "none", background: "var(--green-dim)", color: "var(--green-hi)", fontFamily: "var(--head)", fontSize: 16, letterSpacing: "0.12em", cursor: "pointer", borderRadius: 0 }}>
+              + DEPLOY TO TODAY'S LOG
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <Modal open={!!editFood} onClose={() => setEditFood(null)} title="AMEND DATABASE ENTRY" subtitle="OPERATOR // FIELD DATABASE">
+        {editFood && (
+          <>
+            <Field label="DESIGNATION" value={editForm.name} onChange={v => setEditForm(p => ({...p, name: v}))} />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <Field label="BASE QTY" value={editForm.baseAmount} onChange={v => setEditForm(p => ({...p, baseAmount: v}))} type="number" small />
+              <Sel label="UNIT" value={editForm.unit} onChange={v => setEditForm(p => ({...p, unit: v}))} options={[{value:"g",label:"GRAMS"},{value:"serving",label:"SERVING"}]} />
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <Field label="CALORIES" value={editForm.calories} onChange={v => setEditForm(p => ({...p, calories: v}))} type="number" unit="kcal" small />
+              <Field label="PROTEIN" value={editForm.protein} onChange={v => setEditForm(p => ({...p, protein: v}))} type="number" unit="g" small />
+              <Field label="CARBS" value={editForm.carbs} onChange={v => setEditForm(p => ({...p, carbs: v}))} type="number" unit="g" small />
+              <Field label="FAT" value={editForm.fat} onChange={v => setEditForm(p => ({...p, fat: v}))} type="number" unit="g" small />
+            </div>
+            <Btn onClick={() => { onEdit({...editFood, ...editForm, baseAmount: parseFloat(editForm.baseAmount)||1, calories: parseFloat(editForm.calories)||0, protein: parseFloat(editForm.protein)||0, carbs: parseFloat(editForm.carbs)||0, fat: parseFloat(editForm.fat)||0}); setEditFood(null); }}>◈ CONFIRM CHANGES</Btn>
+          </>
+        )}
+      </Modal>
+
+      {quickAdd && (
+        <AddFoodModal open={!!quickAdd} onClose={() => setQuickAdd(null)} savedFoods={savedFoods} defaultMeal="Breakfast"
+          editEntry={{ ...quickAdd, id: `e${Date.now()}`, meal: "Breakfast", amount: quickAdd.baseAmount, baseCals: quickAdd.calories, baseProt: quickAdd.protein, baseCarbs: quickAdd.carbs, baseFat: quickAdd.fat, calories: quickAdd.calories, protein: quickAdd.protein, carbs: quickAdd.carbs, fat: quickAdd.fat }}
+          onAddEntry={entry => { onAddToLog(entry); setQuickAdd(null); }} />
+      )}
+    </div>
+  );
+}
+
+// ── SETTINGS ──
+function SettingsScreen({ goals, onSaveGoals, onReset }) {
+  const [form, setForm] = useState({...goals});
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [saved, setSaved] = useState(false);
+  useEffect(() => setForm({...goals}), [goals]);
+  const f = k => v => setForm(p => ({...p, [k]: v}));
+
+  return (
+    <div style={{ paddingBottom: 110 }} className="fade-in">
+      <div style={{ background: "var(--bg2)", borderBottom: "1px solid var(--border)", padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <div style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--text-dim)", letterSpacing: "0.12em" }}>OPERATOR // SYSTEM CONFIG</div>
+          <div style={{ fontFamily: "var(--head)", fontSize: 22, color: "var(--green-hi)", letterSpacing: "0.08em" }}>MISSION PARAMETERS</div>
+        </div>
+        <Clock />
+      </div>
+
+      <div style={{ padding: "12px 14px 0" }}>
+        <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", marginBottom: 10, overflow: "hidden" }}>
+          <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", background: "var(--bg2)" }}>
+            <span style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--green-hi)", letterSpacing: "0.12em" }}>◈ DAILY MISSION TARGETS</span>
+          </div>
+          <div style={{ padding: "14px" }}>
+            <Field label="CALORIE TARGET" value={String(form.calories)} onChange={f("calories")} type="number" unit="kcal" />
+            <Field label="PROTEIN TARGET" value={String(form.protein)} onChange={f("protein")} type="number" unit="g" />
+            <Field label="CARBS TARGET" value={String(form.carbs)} onChange={f("carbs")} type="number" unit="g" />
+            <Field label="FAT TARGET" value={String(form.fat)} onChange={f("fat")} type="number" unit="g" />
+            <Btn onClick={() => { onSaveGoals({ calories: parseInt(form.calories)||2200, protein: parseInt(form.protein)||150, carbs: parseInt(form.carbs)||250, fat: parseInt(form.fat)||70 }); setSaved(true); setTimeout(() => setSaved(false), 2000); }}>
+              {saved ? "✓ PARAMETERS SAVED" : "◈ SAVE PARAMETERS"}
+            </Btn>
+          </div>
+        </div>
+
+        <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", marginBottom: 10, overflow: "hidden" }}>
+          <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", background: "var(--bg2)" }}>
+            <span style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--green-hi)", letterSpacing: "0.12em" }}>◈ SYSTEM STATUS</span>
+          </div>
+          <div style={{ padding: "14px" }}>
+            <p style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--text-dim)", lineHeight: 1.8, marginBottom: 14, letterSpacing: "0.04em" }}>
+              ALL DATA STORED LOCALLY. NO NETWORK TRANSMISSION. NO ACCOUNT REQUIRED. FULLY OFFLINE CAPABLE.
+            </p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 6 }}>
+              {[["LOCAL STORAGE","■ ACTIVE","green"],["NETWORK","■ OFFLINE","amber"],["ENCRYPTION","■ BROWSER","green"],["ACCOUNT","■ NONE REQ","green"]].map(([l, v, variant]) => (
+                <div key={l} style={{ background: "var(--bg)", border: "1px solid var(--border)", padding: "10px 12px" }}>
+                  <div style={{ fontFamily: "var(--mono)", fontSize: 8, color: "var(--text-dim)", letterSpacing: "0.08em", marginBottom: 4 }}>{l}</div>
+                  <StatusBadge variant={variant}>{v}</StatusBadge>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ background: "var(--bg3)", border: "1px solid var(--red)", overflow: "hidden" }}>
+          <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--red)", background: "rgba(139,32,32,0.15)" }}>
+            <span style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--red-hi)", letterSpacing: "0.12em" }}>◈ DANGER // DESTRUCTIVE ACTIONS</span>
+          </div>
+          <div style={{ padding: "14px" }}>
+            {!confirmReset ? (
+              <Btn variant="outline" onClick={() => setConfirmReset(true)}>⚠ PURGE ALL DATA</Btn>
+            ) : (
+              <>
+                <p style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--red-hi)", marginBottom: 14, lineHeight: 1.7, letterSpacing: "0.04em" }}>
+                  WARNING: THIS WILL PERMANENTLY DELETE ALL LOGS, WEIGHTS, AND SAVED RATIONS. ACTION CANNOT BE REVERSED.
+                </p>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <Btn variant="ghost" onClick={() => setConfirmReset(false)}>ABORT</Btn>
+                  <Btn variant="red" onClick={() => { onReset(); setConfirmReset(false); }}>CONFIRM PURGE</Btn>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── BOTTOM NAV ──
+function BottomNav({ tab, setTab }) {
+  const tabs = [
+    { id: "dashboard", icon: "⚡", label: "OPS LOG" },
+    { id: "progress", icon: "◈", label: "INTEL" },
+    { id: "foods", icon: "▣", label: "DATABASE" },
+    { id: "settings", icon: "⚙", label: "CONFIG" },
+  ];
+  return (
+    <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 500, background: "var(--bg2)", borderTop: "2px solid var(--green-dim)", display: "flex", zIndex: 100, paddingBottom: "env(safe-area-inset-bottom, 4px)" }}>
+      {tabs.map(t => (
+        <button key={t.id} onClick={() => setTab(t.id)}
+          style={{ flex: 1, padding: "10px 0 8px", border: "none", borderRight: "1px solid var(--border2)", background: tab === t.id ? "var(--bg3)" : "transparent", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, position: "relative" }}>
+          {tab === t.id && <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: "var(--green-hi)" }} />}
+          <span style={{ fontFamily: "var(--mono)", fontSize: tab === t.id ? 16 : 14, color: tab === t.id ? "var(--green-hi)" : "var(--text-dim)", transition: "all 0.15s" }}>{t.icon}</span>
+          <span style={{ fontFamily: "var(--head)", fontSize: 13, letterSpacing: "0.08em", color: tab === t.id ? "var(--green-hi)" : "var(--text-dim)" }}>{t.label}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ── ROOT ──
+function App() {
+  const [tab, setTab] = useState("dashboard");
+  const [goals, setGoals] = useLS("mw_goals", DEFAULT_GOALS);
+  const [entries, setEntries] = useLS("mw_entries", {});
+  const [savedFoods, setSavedFoods] = useLS("mw_savedFoods", SAMPLE_FOODS);
+  const [weights, setWeights] = useLS("mw_weights", []);
+
+  const addFood = (date, entry, isEdit, foodToSave) => {
+    setEntries(prev => {
+      const day = prev[date] || [];
+      return { ...prev, [date]: isEdit ? day.map(e => e.id === entry.id ? entry : e) : [...day, entry] };
+    });
+    if (foodToSave) setSavedFoods(prev => [...prev, foodToSave]);
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", background: "var(--bg)", fontFamily: "var(--body)", maxWidth: 500, margin: "0 auto", position: "relative" }}>
+      {tab === "dashboard" && <Dashboard entries={entries} goals={goals} savedFoods={savedFoods} onAddFood={addFood} onDeleteEntry={(date, id) => setEntries(prev => ({...prev, [date]: (prev[date]||[]).filter(e => e.id !== id)}))} />}
+      {tab === "progress" && <Progress entries={entries} weights={weights} goals={goals} onAddWeight={(val, unit) => setWeights(prev => [...prev, { value: val, unit, date: todayStr() }])} />}
+      {tab === "foods" && <SavedFoodsScreen savedFoods={savedFoods} onDelete={id => setSavedFoods(prev => prev.filter(f => f.id !== id))} onEdit={food => setSavedFoods(prev => prev.map(f => f.id === food.id ? food : f))} onAddToLog={entry => setEntries(prev => { const t = todayStr(); return {...prev, [t]: [...(prev[t]||[]), {...entry, id:`e${Date.now()}`}]}; })} />}
+      {tab === "settings" && <SettingsScreen goals={goals} onSaveGoals={setGoals} onReset={() => { setEntries({}); setSavedFoods(SAMPLE_FOODS); setWeights([]); setGoals(DEFAULT_GOALS); }} />}
+      <BottomNav tab={tab} setTab={setTab} />
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
