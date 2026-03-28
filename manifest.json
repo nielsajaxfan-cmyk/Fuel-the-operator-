@@ -1,8 +1,8 @@
 {
   "name": "OPERATOR // NUTRITION LOG",
   "short_name": "Nutrition Log",
-  "start_url": "/Fuel-the-operator/",
-  "scope": "/Fuel-the-operator/",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#0a0c08",
   "theme_color": "#0a0c08",
